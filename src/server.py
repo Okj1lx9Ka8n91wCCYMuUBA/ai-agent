@@ -7,33 +7,17 @@ from llama_index.llms.ollama import Ollama
 from llama_index import Document
 import requests
 
-
 server_ip = "81.94.150.39"
 server_port = 7869
 base_url = f"http://{server_ip}:{server_port}"
-# base_url = "ollama:11434" # IF USING DOCKER SETUP
-
 
 llm = Ollama(model="gemma2:9b", base_url=base_url)
 llm_predictor = LLMPredictor(llm=llm)
 service_context = ServiceContext.from_defaults(llm_predictor=llm_predictor)
 
+recommendation_api_url = "http://127.0.0.1:8809/recommendations"
 
-def fetch_documents():
-    api_base_url = "http://andpoint"
-    endpoint = "/documents"
-    url = api_base_url + endpoint
-    headers = {'Content-Type': 'application/json'}
 
-    try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        documents = response.json()
-        return documents
-    except requests.exceptions.RequestException as e:
-        raise RuntimeError(f"Error fetching documents: {e}")
-
-# Convert fetched documents to LlamaIndex format
 def convert_to_documents(doc_list):
     documents = []
     for doc in doc_list:
@@ -43,14 +27,13 @@ def convert_to_documents(doc_list):
         documents.append(Document(text=full_text))
     return documents
 
-# Initialize index
 def initialize_index():
-    doc_list = fetch_documents()
-    documents = convert_to_documents(doc_list)
+    documents = []
     index = GPTVectorStoreIndex.from_documents(documents, service_context=service_context)
     return index
 
 index = initialize_index()
+
 
 app = FastAPI()
 
@@ -64,17 +47,34 @@ app.add_middleware(
 
 class QueryRequest(BaseModel):
     question: str
+    startup_details: dict
 
 class QueryResponse(BaseModel):
     answer: str
+    recommendations: list
 
 @app.post("/query", response_model=QueryResponse)
 async def query_documents(query_request: QueryRequest):
-    """Endpoint to query documents using RAG."""
+    """Endpoint to query documents using RAG and fetch recommendations."""
     try:
+        # Query LlamaIndex
         query_engine = index.as_query_engine()
         response = query_engine.query(query_request.question)
-        return QueryResponse(answer=response.response)
+
+        # Fetch recommendations
+        recommendation_payload = query_request.startup_details
+        try:
+            recommendation_response = requests.post(
+                recommendation_api_url,
+                json=recommendation_payload,
+                headers={"Content-Type": "application/json"}
+            )
+            recommendation_response.raise_for_status()
+            recommendations = recommendation_response.json().get("recommendations", [])
+        except requests.exceptions.RequestException as e:
+            raise HTTPException(status_code=500, detail=f"Error fetching recommendations: {str(e)}")
+
+        return QueryResponse(answer=response.response, recommendations=recommendations)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
 
