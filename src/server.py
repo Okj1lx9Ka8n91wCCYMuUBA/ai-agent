@@ -11,6 +11,7 @@ import requests
 server_ip = "81.94.150.39"
 server_port = 7869
 base_url = f"http://{server_ip}:{server_port}"
+# base_url = "ollama:11434" # IF USING DOCKER SETUP
 
 
 llm = Ollama(model="gemma2:9b", base_url=base_url)

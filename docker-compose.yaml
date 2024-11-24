@@ -1,6 +1,32 @@
 version: '3'
 
 services:
+  ai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8808:8808" # REST
+    volumes:
+      - .:/app
+    depends_on:
+      - ollama
+    command:
+      - /bin/bash
+      - -c
+      - |
+        source venv/bin/activate &&
+        python /app/app.py
+    stdin_open: true
+    tty: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
   ollama:
     volumes:
       - ./ollama/ollama:/root/.ollama
